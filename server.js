@@ -18,6 +18,10 @@ app.use('/api/cart', require('./routes/cart'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/admin', require('./routes/admin'));
 
+// upload
+app.use("/api/upload", require("./routes/upload"));
+
+
 app.get('/', (req, res) => res.send('NU Store Backend'));
 
 const PORT = process.env.PORT || 5000;
