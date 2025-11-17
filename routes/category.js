@@ -7,6 +7,7 @@ const cat = require("../controllers/categoryController");
 // Admin-only category CRUD
 router.post("/", protect, requireAdmin, cat.createCategory);
 router.get("/", cat.getCategories);
+router.get("/:id", cat.getCategoryById);   // <-- NEW
 router.put("/:id", protect, requireAdmin, cat.updateCategory);
 router.delete("/:id", protect, requireAdmin, cat.deleteCategory);
 
