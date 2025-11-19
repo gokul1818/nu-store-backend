@@ -12,7 +12,7 @@ const storage = multer.diskStorage({
   }
 });
 
-// Allow only "file" field from FE
+// accepts ONLY { file: FILE }
 const upload = multer({ storage }).single("file");
 
 // Upload endpoint
@@ -21,7 +21,7 @@ router.post("/image", upload, (req, res) => {
     return res.status(400).json({ message: "No file uploaded" });
 
   res.json({
-    url: `${process.env.BASE_URL}/uploads/${req.file.filename}`
+    url: `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`
   });
 });
 
