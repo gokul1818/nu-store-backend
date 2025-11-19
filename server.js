@@ -30,5 +30,5 @@ app.get("/api/upload/tmp/:filename", (req, res) => {
 
 app.get('/', (req, res) => res.send('NU Store Backend'));
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5012;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
