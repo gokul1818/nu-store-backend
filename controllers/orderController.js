@@ -38,9 +38,45 @@ exports.getOrdersForUser = async (req, res) => {
 };
 
 exports.getAllOrders = async (req, res) => {
-  const orders = await Order.find().populate('user').sort({ createdAt: -1 });
-  res.json(orders);
+  try {
+    let { page = 1, limit = 10, status } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    const skip = (page - 1) * limit;
+
+    // Build filter
+    const filter = {};
+    if (status) {
+      filter.status = status; // ex: ?status=Shipped
+    }
+
+    // Paginated + Filtered query
+    const orders = await Order.find(filter)
+      .populate("user", "firstName lastName email phone uniqId")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Count with filter
+    const total = await Order.countDocuments(filter);
+
+    res.json({
+      page,
+      limit,
+      status: status || null,
+      total,
+      totalPages: Math.ceil(total / limit),
+      orders
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch orders" });
+  }
 };
+
+
 
 exports.updateStatus = async (req, res) => {
   const { id } = req.params;
@@ -52,3 +88,23 @@ exports.updateStatus = async (req, res) => {
   await order.save();
   res.json(order);
 };
+
+exports.getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id)
+      .populate("user", "firstName lastName email phone uniqId")
+      .populate("items.product");
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    res.json(order);
+
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch order" });
+  }
+};
+

@@ -8,5 +8,6 @@ router.post('/', protect, order.createOrder);
 router.get('/', protect, order.getOrdersForUser);
 router.get('/all', protect, requireAdmin, order.getAllOrders);
 router.put('/:id/status', protect, requireAdmin, order.updateStatus);
+router.get("/:id", protect, requireAdmin,order.getOrderById);
 
 module.exports = router;

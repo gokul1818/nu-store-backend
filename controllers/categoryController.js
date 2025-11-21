@@ -4,12 +4,13 @@ const slugify = require("slugify");
 // CREATE
 exports.createCategory = async (req, res) => {
   try {
-    const { name, parent } = req.body;
+    const { name, parent, description } = req.body;
 
     const category = new Category({
       name,
       slug: slugify(name.toLowerCase()),
-      parent: parent || null
+      parent: parent || null,
+      description: description
     });
 
     await category.save();
@@ -54,7 +55,7 @@ exports.getCategoryById = async (req, res) => {
 // UPDATE
 exports.updateCategory = async (req, res) => {
   try {
-    const { name, parent } = req.body;
+    const { name, parent, description } = req.body;
     const { id } = req.params;
 
     const updated = await Category.findByIdAndUpdate(
@@ -62,7 +63,8 @@ exports.updateCategory = async (req, res) => {
       {
         name,
         slug: slugify(name.toLowerCase()),
-        parent: parent || null
+        parent: parent || null,
+        description: description
       },
       { new: true }
     );

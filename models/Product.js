@@ -10,19 +10,23 @@ const VariantSchema = new mongoose.Schema({
 
 const ProductSchema = new mongoose.Schema({
   title: { type: String, required: true },
-  slug: { type: String, index: true },
+  slug: { type: String, unique: true, index: true },
 
   description: String,
 
   price: { type: Number, required: true },
-  mrp: { type: Number },
-
+  mrp: Number,
+  discount: { type: Number }, // or Mixed if needed
   thumbnail: String,
   images: [String],
 
-  category: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
+  category: { type: String || null },
 
-  gender: { type: String },
+  gender: {
+    type: String,
+    enum: ["men", "women", "kids"],
+    required: true
+  },
 
   variants: [VariantSchema],
 
@@ -42,8 +46,12 @@ ProductSchema.pre('save', function (next) {
 ProductSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
 
-  if (update.title) {
-    update.slug = slugify(update.title, { lower: true });
+  if (update.title || (update.$set && update.$set.title)) {
+    const titleToUse = update.title || update.$set.title;
+    const newSlug = slugify(titleToUse, { lower: true });
+
+    if (update.$set) update.$set.slug = newSlug;
+    else update.slug = newSlug;
   }
 
   next();

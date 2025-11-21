@@ -1,9 +1,66 @@
 const User = require('../models/User');
-const Product = require('../models/Product');
+const Order = require('../models/Order');
 
 exports.getUsers = async (req, res) => {
-  const users = await User.find().select('-password');
-  res.json(users);
+  try {
+    let { page = 1, limit = 10 } = req.query;
+    page = Number(page);
+    limit = Number(limit);
+
+    const skip = (page - 1) * limit;
+
+    // Get users with pagination
+    const users = await User.find()
+      .select("-password -wishlist")
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Get total user count
+    const totalUsers = await User.countDocuments();
+
+    // Fetch order stats
+    const userIds = users.map((u) => u._id);
+
+    const orderData = await Order.aggregate([
+      { $match: { user: { $in: userIds } } },
+      {
+        $group: {
+          _id: "$user",
+          orderCount: { $sum: 1 },
+          lastOrderDate: { $max: "$createdAt" }
+        }
+      }
+    ]);
+
+    const orderMap = {};
+    orderData.forEach((o) => {
+      orderMap[o._id] = o;
+    });
+
+    // Final response formatting
+    const response = users.map((u) => ({
+      _id: u._id,
+      uniqId: u.uniqId,
+      name: `${u.firstName} ${u.lastName || ""}`.trim(),
+      email: u.email || "-",
+      phone: u.phone || "-",
+      createdAt: u.createdAt,
+      status: u.email?.startsWith("blocked_") ? "Inactive" : "Active",
+      totalOrders: orderMap[u._id]?.orderCount || 0,
+      lastOrder: orderMap[u._id]?.lastOrderDate || null,
+    }));
+
+    res.json({
+      users: response,
+      total: totalUsers,
+      page,
+      pages: Math.ceil(totalUsers / limit)
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.blockUser = async (req, res) => {

@@ -23,8 +23,7 @@ const Product = require('./models/Product');
     description: 'Streetwear oversized tee',
     price: 999,
     images: [],
-    categories: ['Oversized T-Shirts'],
-    gender: 'Men',
+    gender: 'men',
     variants: [
       { size: 'M', color: 'Black', sku: 'OST-M-BLK', stock: 10 },
       { size: 'L', color: 'White', sku: 'OST-L-WHT', stock: 5 }
