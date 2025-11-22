@@ -5,6 +5,7 @@ const { protect } = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/admin');
 
 router.get('/users', protect, requireAdmin, admin.getUsers);
+router.get('/users/:id', protect, requireAdmin, admin.getUserById);
 router.put('/users/:id/block', protect, requireAdmin, admin.blockUser);
 router.put("/users/unblock/:id", protect, requireAdmin, admin.unblockUser);
 router.get('/analytics', protect, requireAdmin, admin.analytics);

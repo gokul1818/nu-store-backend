@@ -3,23 +3,61 @@ const Order = require('../models/Order');
 
 exports.getUsers = async (req, res) => {
   try {
-    let { page = 1, limit = 10 } = req.query;
+    let {
+      page = 1,
+      limit = 10,
+      q,         
+      status,     
+      startDate,  
+      endDate
+    } = req.query;
+
     page = Number(page);
     limit = Number(limit);
 
     const skip = (page - 1) * limit;
 
-    // Get users with pagination
-    const users = await User.find()
+    const filter = {};
+
+    // SEARCH: name, email, phone
+    if (q && q !== "") {
+      filter.$or = [
+        { firstName: { $regex: q, $options: "i" } },
+        { lastName: { $regex: q, $options: "i" } },
+        { email: { $regex: q, $options: "i" } },
+        { phone: { $regex: q, $options: "i" } }
+      ];
+    }
+
+    // STATUS FILTER
+    if (status === "Active") {
+      filter.email = { $not: /^blocked_/ };
+    } else if (status === "Inactive") {
+      filter.email = { $regex: /^blocked_/ };
+    }
+
+    // DATE FILTER (optional)
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate) filter.createdAt.$lte = new Date(endDate);
+    }
+
+    // -----------------------------
+    // FETCH USERS WITH PAGINATION
+    // -----------------------------
+    const users = await User.find(filter)
       .select("-password -wishlist")
       .skip(skip)
       .limit(limit)
+      .sort({ createdAt: -1 })
       .lean();
 
-    // Get total user count
-    const totalUsers = await User.countDocuments();
+    const totalUsers = await User.countDocuments(filter);
 
-    // Fetch order stats
+    // -----------------------------
+    // FETCH ORDER STATS FOR USERS
+    // -----------------------------
     const userIds = users.map((u) => u._id);
 
     const orderData = await Order.aggregate([
@@ -38,7 +76,9 @@ exports.getUsers = async (req, res) => {
       orderMap[o._id] = o;
     });
 
-    // Final response formatting
+    // -----------------------------
+    // FINAL RESPONSE FORMAT
+    // -----------------------------
     const response = users.map((u) => ({
       _id: u._id,
       uniqId: u.uniqId,
@@ -55,8 +95,55 @@ exports.getUsers = async (req, res) => {
       users: response,
       total: totalUsers,
       page,
-      pages: Math.ceil(totalUsers / limit)
+      pages: Math.ceil(totalUsers / limit),
     });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+exports.getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Fetch user
+    const user = await User.findById(id)
+      .select("-password -wishlist")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Fetch order stats for this user
+    const orderStats = await Order.aggregate([
+      { $match: { user: user._id } },
+      {
+        $group: {
+          _id: "$user",
+          totalOrders: { $sum: 1 },
+          lastOrderDate: { $max: "$createdAt" }
+        }
+      }
+    ]);
+
+    const stats = orderStats[0] || { totalOrders: 0, lastOrderDate: null };
+
+    // Final response
+    const response = {
+      _id: user._id,
+      uniqId: user.uniqId,
+      name: `${user.firstName} ${user.lastName || ""}`.trim(),
+      email: user.email || "-",
+      phone: user.phone || "-",
+      createdAt: user.createdAt,
+      status: user.email?.startsWith("blocked_") ? "Inactive" : "Active",
+      totalOrders: stats.totalOrders,
+      lastOrder: stats.lastOrderDate
+    };
+
+    res.json(response);
 
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -79,9 +166,9 @@ exports.unblockUser = async (req, res) => {
 
   if (user.email && user.email.startsWith("blocked_")) {
     const parts = user.email.split("_");
-    parts.shift(); 
     parts.shift();
-    user.email = parts.join("_"); 
+    parts.shift();
+    user.email = parts.join("_");
   }
 
   if (user.phone && user.phone.startsWith("blocked_")) {
@@ -100,7 +187,7 @@ exports.analytics = async (req, res) => {
   // Very basic analytics: total sales, top products by orders, monthly revenue (simple)
   const Order = require('../models/Order');
   const totalOrders = await Order.countDocuments();
-  const totalRevenueAgg = await Order.aggregate([{ $group: { _id: null, total: { $sum: "$totalAmount" }}}]);
+  const totalRevenueAgg = await Order.aggregate([{ $group: { _id: null, total: { $sum: "$totalAmount" } } }]);
   const totalRevenue = totalRevenueAgg[0] ? totalRevenueAgg[0].total : 0;
   res.json({ totalOrders, totalRevenue });
 };
