@@ -72,6 +72,30 @@ exports.blockUser = async (req, res) => {
   res.json({ message: 'blocked' });
 };
 
+exports.unblockUser = async (req, res) => {
+  const user = await User.findById(req.params.id);
+
+  if (!user) return res.status(404).json({ message: "No user" });
+
+  if (user.email && user.email.startsWith("blocked_")) {
+    const parts = user.email.split("_");
+    parts.shift(); 
+    parts.shift();
+    user.email = parts.join("_"); 
+  }
+
+  if (user.phone && user.phone.startsWith("blocked_")) {
+    const parts = user.phone.split("_");
+    parts.shift();
+    parts.shift();
+    user.phone = parts.join("_");
+  }
+
+  await user.save();
+
+  res.json({ message: "unblocked" });
+};
+
 exports.analytics = async (req, res) => {
   // Very basic analytics: total sales, top products by orders, monthly revenue (simple)
   const Order = require('../models/Order');

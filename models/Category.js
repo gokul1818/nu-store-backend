@@ -6,6 +6,7 @@ const CategorySchema = new mongoose.Schema({
   parent: {
     type: String, required: true, unique: false
   },
+  image: { type: String },
   description: { type: String, required: false },
   createdAt: { type: Date, default: Date.now }
 });

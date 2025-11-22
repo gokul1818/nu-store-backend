@@ -56,7 +56,7 @@ exports.get = async (req, res) => {
 exports.list = async (req, res) => {
   try {
     const {
-      category,
+      category,      // categoryId
       gender,
       size,
       color,
@@ -70,25 +70,27 @@ exports.list = async (req, res) => {
 
     const filter = {};
 
-    // CATEGORY filter
-    if (category && category !== "") filter.category = category;
+    // CATEGORY FILTER USING CATEGORY ID
+    if (category && category !== "") {
+      filter.category = category;  // direct ObjectId
+    }
 
     // GENDER filter
     if (gender) filter.gender = gender;
 
-    // FULL TEXT SEARCH
+    // TEXT SEARCH
     if (q) filter.title = { $regex: q, $options: "i" };
 
-    // PRICE RANGE FILTER
+    // PRICE RANGE
     if (minPrice || maxPrice) {
       filter.price = {};
       if (minPrice) filter.price.$gte = Number(minPrice);
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
-    let finalQuery = Product.find(filter);
+    let finalQuery = Product.find(filter).populate("category", "name slug");
 
-    // VARIANT SIZE/COLOR filter
+    // SIZE & COLOR VARIANT FILTERS
     if (size || color) {
       const variantFilter = {};
       if (size) variantFilter.size = size;
@@ -97,7 +99,7 @@ exports.list = async (req, res) => {
       finalQuery = Product.find({
         ...filter,
         variants: { $elemMatch: variantFilter }
-      });
+      }).populate("category", "name slug");
     }
 
     // SORTING
@@ -108,6 +110,8 @@ exports.list = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const products = await finalQuery.skip(skip).limit(Number(limit));
+
+    // COUNT FOR PAGINATION
     const total = await Product.countDocuments(filter);
 
     res.json({
