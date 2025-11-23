@@ -5,7 +5,8 @@ const OrderItemSchema = new mongoose.Schema({
   title: String,
   variant: Object,
   qty: Number,
-  price: Number
+  price: Number,
+  images: [String]
 });
 
 const OrderSchema = new mongoose.Schema({
@@ -20,6 +21,7 @@ const OrderSchema = new mongoose.Schema({
     default: 'Processing'
   },
   trackingNumber: String,
+  trackingUrl: String,
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -1,41 +1,123 @@
 const Order = require('../models/Order');
-const Cart = require('../models/Cart');
+const Product = require("../models/Product");
 
 exports.createOrder = async (req, res) => {
-  const { shippingAddress, paymentMethod } = req.body;
-  const cart = await Cart.findOne({ user: req.user._id }).populate('items.product');
-  if (!cart || cart.items.length === 0) return res.status(400).json({ message: 'Cart empty' });
+  try {
+    const { items, shippingAddress, paymentMethod } = req.body;
 
-  // build order items and compute total
-  const items = cart.items.map(i => ({
-    product: i.product._id,
-    title: i.product.title,
-    variant: i.variant,
-    qty: i.qty,
-    price: i.priceAtAdd
-  }));
-  const totalAmount = items.reduce((s, it) => s + it.qty * it.price, 0);
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: "No items in order" });
+    }
 
-  const order = new Order({
-    user: req.user._id,
-    items,
-    shippingAddress,
-    paymentMethod,
-    totalAmount
-  });
-  await order.save();
+    const orderItems = [];
+    let totalAmount = 0;
 
-  // note: stock deduction logic should happen when order is delivered or per your rule
-  await Cart.findOneAndDelete({ user: req.user._id });
+    for (const item of items) {
+      const productId = item._id;
+      const qty = item.qty;
+      const selected = item.selectedOptions; // { size, color, sku, stock }
 
-  // send confirmation (stub)
-  res.json({ order });
+      // Fetch product from DB
+      const product = await Product.findById(productId);
+      if (!product) {
+        return res.status(400).json({ message: "Invalid product" });
+      }
+
+      // Find variant in DB
+      const variant = product.variants.find(
+        (v) =>
+          v.size === selected.size &&
+          v.color === selected.color &&
+          v.sku === selected.sku
+      );
+
+      if (!variant) {
+        return res.status(400).json({
+          message: `Variant ${selected.size}/${selected.color} not found`
+        });
+      }
+
+      // Check stock
+      if (variant.stock < qty) {
+        return res.status(400).json({
+          message: `${product.title} (${variant.size}/${variant.color}) has only ${variant.stock} left`
+        });
+      }
+
+      // Deduct stock
+      variant.stock -= qty;
+      await product.save();
+
+      // Prepare order item
+      orderItems.push({
+        product: product._id,
+        title: product.title,
+        qty,
+        variant: {
+          size: variant.size,
+          color: variant.color,
+          sku: variant.sku,
+        },
+        images: product.images,
+        price: product.price
+      });
+
+      totalAmount += product.price * qty;
+    }
+
+    // Create order
+    const order = new Order({
+      user: req.user._id,
+      items: orderItems,
+      shippingAddress,
+      paymentMethod,
+      totalAmount
+    });
+
+    await order.save();
+
+    res.json({ message: "Order placed successfully", order });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to create order", error: err.message });
+  }
 };
+
 
 exports.getOrdersForUser = async (req, res) => {
-  const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
-  res.json(orders);
+  try {
+    let { page = 1, limit = 10 } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    const skip = (page - 1) * limit;
+
+    const filter = { user: req.user._id };
+
+    // Fetch paginated orders
+    const orders = await Order.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // Count total orders for this user
+    const total = await Order.countDocuments(filter);
+
+    res.json({
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      orders
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch orders" });
+  }
 };
+
 
 exports.getAllOrders = async (req, res) => {
   try {
@@ -80,11 +162,12 @@ exports.getAllOrders = async (req, res) => {
 
 exports.updateStatus = async (req, res) => {
   const { id } = req.params;
-  const { status, trackingNumber } = req.body;
+  const { status, trackingNumber, trackingUrl } = req.body;
   const order = await Order.findById(id);
   if (!order) return res.status(404).json({ message: 'Order not found' });
   if (status) order.status = status;
   if (trackingNumber) order.trackingNumber = trackingNumber;
+  if (trackingUrl) order.trackingUrl = trackingUrl;
   await order.save();
   res.json(order);
 };
