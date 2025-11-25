@@ -1,6 +1,13 @@
 const mongoose = require('mongoose');
 const slugify = require('slugify');
 
+const ReviewSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  rating: { type: Number, min: 1, max: 5, required: true },
+  comment: { type: String },
+  createdAt: { type: Date, default: Date.now }
+});
+
 const VariantSchema = new mongoose.Schema({
   size: String,
   color: String,
@@ -24,12 +31,14 @@ const ProductSchema = new mongoose.Schema({
 
   gender: {
     type: String,
-    enum: ["men", "women", "kids"],
+    enum: ["men", "women", "kids", "gender_men", "gender_women", "gender_kids"],
     required: true
   },
 
   variants: [VariantSchema],
-
+  reviews: [ReviewSchema],
+  averageRating: { type: Number, default: 0 },
+  ratingCount: { type: Number, default: 0 },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
 });

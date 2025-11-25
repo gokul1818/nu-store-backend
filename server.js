@@ -20,6 +20,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use("/api/categories", require("./routes/category"));
 app.use("/api/banner", require("./routes/banner"));
 app.use("/api/admin", require("./routes/adminDashboard"));
+app.use("/api/products", require("./routes/reviewRoutes"));
 
 // upload
 app.use("/api/upload", require("./routes/upload"));
