@@ -53,10 +53,12 @@ exports.get = async (req, res) => {
 };
 
 // LIST
+
+
 exports.list = async (req, res) => {
   try {
     const {
-      category,      // categoryId
+      category,
       gender,
       size,
       color,
@@ -70,15 +72,13 @@ exports.list = async (req, res) => {
 
     const filter = {};
 
-    // CATEGORY FILTER USING CATEGORY ID
-    if (category && category !== "") {
-      filter.category = category;  // direct ObjectId
-    }
+    // CATEGORY FILTER
+    if (category) filter.category = category;
 
-    // GENDER filter
+    // GENDER FILTER
     if (gender) filter.gender = gender;
 
-    // TEXT SEARCH
+    // SEARCH BY TITLE
     if (q) filter.title = { $regex: q, $options: "i" };
 
     // PRICE RANGE
@@ -88,31 +88,53 @@ exports.list = async (req, res) => {
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
 
-    let finalQuery = Product.find(filter).populate("category", "name slug");
+    let variantFilter = {};
+    if (size) variantFilter.size = size;
+    if (color) variantFilter.color = color;
 
-    // SIZE & COLOR VARIANT FILTERS
-    if (size || color) {
-      const variantFilter = {};
-      if (size) variantFilter.size = size;
-      if (color) variantFilter.color = color;
-
-      finalQuery = Product.find({
-        ...filter,
-        variants: { $elemMatch: variantFilter }
-      }).populate("category", "name slug");
-    }
+    let query = Product.find(variantFilter.size || variantFilter.color
+      ? { ...filter, variants: { $elemMatch: variantFilter } }
+      : filter
+    ).populate("category", "name slug");
 
     // SORTING
-    if (sort === "price_asc") finalQuery = finalQuery.sort({ price: 1 });
-    else if (sort === "price_desc") finalQuery = finalQuery.sort({ price: -1 });
-    else if (sort === "newest") finalQuery = finalQuery.sort({ createdAt: -1 });
+    if (sort === "price_asc") {
+      query = query.sort({ price: 1 });
+    } else if (sort === "price_desc") {
+      query = query.sort({ price: -1 });
+    } else if (sort === "newest") {
+      query = query.sort({ createdAt: -1 });
+    } else if (sort === "popular") {
+      // Popular sorting based on item sold
+      const bestSelling = await Order.aggregate([
+        { $unwind: "$items" },
+        {
+          $group: {
+            _id: "$items.product",
+            totalSold: { $sum: "$items.qty" }
+          }
+        },
+        { $sort: { totalSold: -1 } }
+      ]);
 
+      const popularIds = bestSelling.map(b => b._id.toString());
+
+      query = Product.find(filter).populate("category", "name slug");
+
+      query = query.sort((a, b) =>
+        popularIds.indexOf(a._id.toString()) - popularIds.indexOf(b._id.toString())
+      );
+    }
+
+    // PAGINATION
     const skip = (page - 1) * limit;
+    const products = await query.skip(skip).limit(Number(limit));
 
-    const products = await finalQuery.skip(skip).limit(Number(limit));
-
-    // COUNT FOR PAGINATION
-    const total = await Product.countDocuments(filter);
+    const total = await Product.countDocuments(
+      variantFilter.size || variantFilter.color
+        ? { ...filter, variants: { $elemMatch: variantFilter } }
+        : filter
+    );
 
     res.json({
       products,
@@ -125,3 +147,17 @@ exports.list = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// ?sort=price_asc
+// ?sort=price_desc
+// ?sort=newest
+// ?sort=popular
+// ?gender=men
+// ?gender=women
+// ?category=ID
+// ?size=M&color=black
+// ?minPrice=500&maxPrice=1500
+// ?q=hoodie
+// ?page=1&limit=20
+
+
