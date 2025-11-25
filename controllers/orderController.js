@@ -1,6 +1,13 @@
-const Order = require('../models/Order');
+const Order = require("../models/Order");
 const Product = require("../models/Product");
+const User = require("../models/User");
+const sendEmail = require("../utils/sendEmail");
+const orderConfirmedTemplate = require("../emails/orderConfirmed");
+const orderStatusTemplate = require("../emails/orderStatusUpdate");
 
+// ==========================
+// CREATE ORDER
+// ==========================
 exports.createOrder = async (req, res) => {
   try {
     const { items, shippingAddress, paymentMethod } = req.body;
@@ -9,21 +16,23 @@ exports.createOrder = async (req, res) => {
       return res.status(400).json({ message: "No items in order" });
     }
 
+    const user = await User.findById(req.user._id); // FIXED
+
     const orderItems = [];
     let totalAmount = 0;
 
     for (const item of items) {
       const productId = item._id;
       const qty = item.qty;
-      const selected = item.selectedOptions; // { size, color, sku, stock }
+      const selected = item.selectedOptions;
 
-      // Fetch product from DB
+      // Fetch product
       const product = await Product.findById(productId);
       if (!product) {
         return res.status(400).json({ message: "Invalid product" });
       }
 
-      // Find variant in DB
+      // Validate variant
       const variant = product.variants.find(
         (v) =>
           v.size === selected.size &&
@@ -37,7 +46,6 @@ exports.createOrder = async (req, res) => {
         });
       }
 
-      // Check stock
       if (variant.stock < qty) {
         return res.status(400).json({
           message: `${product.title} (${variant.size}/${variant.color}) has only ${variant.stock} left`
@@ -48,7 +56,7 @@ exports.createOrder = async (req, res) => {
       variant.stock -= qty;
       await product.save();
 
-      // Prepare order item
+      // Build order item
       orderItems.push({
         product: product._id,
         title: product.title,
@@ -56,7 +64,7 @@ exports.createOrder = async (req, res) => {
         variant: {
           size: variant.size,
           color: variant.color,
-          sku: variant.sku,
+          sku: variant.sku
         },
         images: product.images,
         price: product.price
@@ -76,15 +84,25 @@ exports.createOrder = async (req, res) => {
 
     await order.save();
 
-    res.json({ message: "Order placed successfully", order });
+    // SEND EMAIL (FIXED)
+    await sendEmail(
+      user.email,
+      "Order Confirmed ✔",
+      orderConfirmedTemplate(order, user)
+    );
 
+    res.json({ message: "Order placed successfully", order });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Failed to create order", error: err.message });
+    res
+      .status(500)
+      .json({ message: "Failed to create order", error: err.message });
   }
 };
 
-
+// ==========================
+// GET USER ORDERS (PAGINATED)
+// ==========================
 exports.getOrdersForUser = async (req, res) => {
   try {
     let { page = 1, limit = 10 } = req.query;
@@ -93,16 +111,13 @@ exports.getOrdersForUser = async (req, res) => {
     limit = parseInt(limit);
 
     const skip = (page - 1) * limit;
-
     const filter = { user: req.user._id };
 
-    // Fetch paginated orders
     const orders = await Order.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    // Count total orders for this user
     const total = await Order.countDocuments(filter);
 
     res.json({
@@ -112,36 +127,31 @@ exports.getOrdersForUser = async (req, res) => {
       totalPages: Math.ceil(total / limit),
       orders
     });
-
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch orders" });
   }
 };
 
-
+// ==========================
+// ADMIN ALL ORDERS (PAGINATED)
+// ==========================
 exports.getAllOrders = async (req, res) => {
   try {
     let { page = 1, limit = 10, status } = req.query;
 
+    const filter = {};
+    if (status) filter.status = status;
+
     page = parseInt(page);
     limit = parseInt(limit);
-
     const skip = (page - 1) * limit;
 
-    // Build filter
-    const filter = {};
-    if (status) {
-      filter.status = status; // ex: ?status=Shipped
-    }
-
-    // Paginated + Filtered query
     const orders = await Order.find(filter)
       .populate("user", "firstName lastName email phone uniqId")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
 
-    // Count with filter
     const total = await Order.countDocuments(filter);
 
     res.json({
@@ -152,42 +162,56 @@ exports.getAllOrders = async (req, res) => {
       totalPages: Math.ceil(total / limit),
       orders
     });
-
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch orders" });
   }
 };
 
-
-
+// ==========================
+// UPDATE ORDER STATUS
+// ==========================
 exports.updateStatus = async (req, res) => {
-  const { id } = req.params;
-  const { status, trackingNumber, trackingUrl } = req.body;
-  const order = await Order.findById(id);
-  if (!order) return res.status(404).json({ message: 'Order not found' });
-  if (status) order.status = status;
-  if (trackingNumber) order.trackingNumber = trackingNumber;
-  if (trackingUrl) order.trackingUrl = trackingUrl;
-  await order.save();
-  res.json(order);
-};
-
-exports.getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
+    const { status, trackingNumber, trackingUrl } = req.body;
 
-    const order = await Order.findById(id)
+    const order = await Order.findById(id).populate("user"); // FIXED populate user
+
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (status) order.status = status;
+    if (trackingNumber) order.trackingNumber = trackingNumber;
+    if (trackingUrl) order.trackingUrl = trackingUrl;
+
+    await order.save();
+
+    // SEND EMAIL (FIXED)
+    await sendEmail(
+      order.user.email,
+      `Order Status Updated to: ${status}`,
+      orderStatusTemplate(order, order.user)
+    );
+
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to update order" });
+  }
+};
+
+// ==========================
+// ORDER BY ID
+// ==========================
+exports.getOrderById = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
       .populate("user", "firstName lastName email phone uniqId")
       .populate("items.product");
 
-    if (!order) {
+    if (!order)
       return res.status(404).json({ message: "Order not found" });
-    }
 
     res.json(order);
-
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch order" });
   }
 };
-
