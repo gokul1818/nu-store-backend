@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const ResetToken = require('../models/ResetToken');
 const { v4: uuidv4 } = require('uuid');
 const sendEmail = require('../utils/sendEmail');
+const forgotPasswordTemplate = require("../emails/forgotPassword");
 
 function generateToken(user) {
   return jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' });
